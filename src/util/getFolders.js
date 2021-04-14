@@ -25,7 +25,6 @@ module.exports = function getFolders(pathFolder, options = {}) {
       readFileSync(quantFactorPath, 'utf8'),
     );
     folders.push(dir);
-    break;
   }
   return { folders, quantFactorSample };
 };
