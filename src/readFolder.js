@@ -1,18 +1,19 @@
-const convertSpectra = require('./util/convertSpectra');
-const getFolders = require('./util/getFolders');
-
+'use strinct';
 const { writeFileSync } = require('fs');
+const os = require('os');
 
 const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
+const { unparse } = require('papaparse');
 
-const os = require('os');
+const convertSpectra = require('./util/convertSpectra');
+const getFolders = require('./util/getFolders');
 
 const sqrtPI = Math.sqrt(Math.PI);
 
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
-let path = '../BIOGUNE';
+let path = '/data2/BIOGUNE';
 
 let ROI = [
   {
@@ -66,10 +67,9 @@ let optimizationOptions = {
 
 let { folders, quantFactorSample } = getFolders(path, { separator });
 
-
 let result = [];
 for (let folder of folders) {
-  console.log(`\n\n ${folder}`)
+  console.log(`\n\n ${folder}`);
   let spectra = convertSpectra(folder, { separator, xy: true });
   let ereticFactor = quantFactorSample[spectra.filename];
   let {
@@ -88,12 +88,12 @@ for (let folder of folders) {
   for (let i = 0; i < nbPoints; i++) {
     spectrum.y[i] /= ereticFactor;
   }
-  // writeFileSync('hola.txt', JSON.stringify({x: Array.from(spectrum.x), y: Array.from(spectrum.y)}))
-  let roiResult = { eretic: {integration: 1} };
-  let first
+
+  let roiResult = { eretic: { integration: 1 } };
+  let first;
   for (let roi of ROI) {
-    console.log(`roi: ${roi.name}`)
-    const ereticIntegration = roiResult['eretic'].integration;
+    console.log(`roi: ${roi.name}`);
+    const ereticIntegration = roiResult.eretic.integration;
     let peaks = getOptPeaks(spectrum, {
       gsdOptions,
       optimizationOptions,
@@ -109,26 +109,26 @@ for (let folder of folders) {
     } else {
       candidates = peaks.slice();
       peaks.sort((a, b) => b.y - a.y);
-      bestCandidate = peaks.slice(0, roi.pattern.length + 1);
+      bestCandidate = peaks.slice(0, roi.pattern.length);
     }
 
-    let shift = bestCandidate.reduce((a, b) => a + b.x) / bestCandidate.length;
+    let shift =
+      bestCandidate.reduce((a, b) => a + b.x, 0) / bestCandidate.length;
 
     let integration =
-      bestCandidate.reduce((a, peak) => {
+      (bestCandidate.reduce((a, peak) => {
         return (
           peak.y * peak.width * sqrtPI * (1 - peak.mu + peak.mu * sqrtPI) + a
         );
-      }, 0) / ereticIntegration * 10;
+      }, 0) /
+        ereticIntegration) *
+      10;
 
     roiResult[roi.name] = {
       shift,
       integration,
-      candidates: 
-      peaks: peaks.map(peak => {
-        let { x, y, width, mu } = peak;
-        return { x, y, width, mu };
-      }),
+      candidates,
+      peaks: bestCandidate,
     };
   }
   result.push({
@@ -137,7 +137,8 @@ for (let folder of folders) {
   });
 }
 
-writeFileSync('hola.txt', JSON.stringify(result));
+writeFileSync('peakResult.json', JSON.stringify(result));
+writeFileSync('peakResult.csv', unparse(JSON.stringify(result)));
 
 function getOptPeaks(spectrum, options = {}) {
   let { roi, optimizationOptions, gsdOptions } = options;
@@ -145,7 +146,10 @@ function getOptPeaks(spectrum, options = {}) {
   let experimental = xyExtract(spectrum, { zones: [{ from, to }] });
   let peaks = gsd(experimental, gsdOptions);
   let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
-  return optPeaks;
+  return optPeaks.map((peak) => {
+    let { x, y, width, mu } = peak;
+    return { x, y, width, mu };
+  });
 }
 function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
   if (candidates.length === 0) return null;
@@ -159,9 +163,6 @@ function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
       let toExport = {
         peaks: indexs.map((index) => peaks[index]),
         score: cand.score,
-        delta,
-        range,
-        nH,
       };
       return toExport;
     });
