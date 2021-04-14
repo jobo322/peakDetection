@@ -1,5 +1,6 @@
-const { convertFolder } = require('brukerconverter');
 const { readFileSync } = require('fs');
+
+const { convertFolder } = require('brukerconverter');
 const { IOBuffer } = require('iobuffer');
 const walker = require('klaw-sync');
 
@@ -53,4 +54,4 @@ module.exports = function convertSpectra(folderName, options = {}) {
     filename: folderName,
     value: convertFolder(brukerFiles, options),
   };
-}
+};
