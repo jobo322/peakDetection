@@ -11,9 +11,7 @@ module.exports = function getFolders(pathFolder, options = {}) {
   let directories = walker(pathFolder, { nofile: true });
   for (let i = 0; i < directories.length; i++) {
     let dir = directories[i].path;
-console.log(join(dir, '1r'))
     if (!existsSync(join(dir, '1r'))) continue;
-//console.log(`pasa first exist`)
     let parts = dir.split(separator);
     if (Number(parts[parts.length - 1]) > 10) continue;
     let quantFactorPath = join(
@@ -21,13 +19,10 @@ console.log(join(dir, '1r'))
       ...parts.slice(0, parts.length - 2),
       'QuantFactorSample.xml',
     );
-//console.log(`path q ${quantFactorPath}`);
     if (!existsSync(quantFactorPath)) continue;
-//    console.log('pasa quant exist');
     quantFactorSample[dir] = extractEreticFactor(readFileSync(quantFactorPath, 'utf8'));
     folders.push(dir);
   }
-//console.log(folders)
   return { folders, quantFactorSample };
 };
 
