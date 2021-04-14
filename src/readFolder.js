@@ -14,6 +14,7 @@ const sqrtPI = Math.sqrt(Math.PI);
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
 let path = '/data2/BIOGUNE';
+// let path = 'C:\\users\\alejo\\documents\\BIOGUNE';
 
 let ROI = [
   {
@@ -39,8 +40,6 @@ let ROI = [
     jCoupling: [3.74],
     byCandidate: true,
   },
-  // { from: 2.0, to: 2.1 },
-  // { from: 3.0, to: 3.2 },
 ];
 
 let gsdOptions = {
@@ -89,11 +88,10 @@ for (let folder of folders) {
     spectrum.y[i] /= ereticFactor;
   }
 
-  let roiResult = { eretic: { integration: 1 } };
+  let roiResult = {};
   let first;
   for (let roi of ROI) {
     console.log(`roi: ${roi.name}`);
-    const ereticIntegration = roiResult.eretic.integration;
     let peaks = getOptPeaks(spectrum, {
       gsdOptions,
       optimizationOptions,
@@ -107,7 +105,7 @@ for (let folder of folders) {
       candidates.sort((a, b) => b.score - a.score);
       bestCandidate = candidates[0].peaks;
     } else {
-      candidates = peaks.slice();
+      candidates = { peaks: peaks.slice(), score: 1 };
       peaks.sort((a, b) => b.y - a.y);
       bestCandidate = peaks.slice(0, roi.pattern.length);
     }
@@ -115,14 +113,11 @@ for (let folder of folders) {
     let shift =
       bestCandidate.reduce((a, b) => a + b.x, 0) / bestCandidate.length;
 
-    let integration =
-      (bestCandidate.reduce((a, peak) => {
-        return (
-          peak.y * peak.width * sqrtPI * (1 - peak.mu + peak.mu * sqrtPI) + a
-        );
-      }, 0) /
-        ereticIntegration) *
-      10;
+    let integration = bestCandidate.reduce((totalIntegration, peak) => {
+      let { y, width, mu } = peak;
+      totalIntegration += y * width * sqrtPI * (1 - mu + mu * sqrtPI);
+      return totalIntegration;
+    }, 0);
 
     roiResult[roi.name] = {
       shift,
@@ -138,7 +133,7 @@ for (let folder of folders) {
 }
 
 writeFileSync('peakResult.json', JSON.stringify(result));
-writeFileSync('peakResult.csv', unparse(JSON.stringify(result)));
+writeFileSync('peakResult.csv', unparse(result));
 
 function getOptPeaks(spectrum, options = {}) {
   let { roi, optimizationOptions, gsdOptions } = options;
@@ -187,7 +182,7 @@ function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
 
         let diffRI = Math.abs(RIP - RIC) / RIP;
 
-        if (diffRI < 0.1) {
+        if (diffRI < 0.08) {
           score += 1 - diffRI;
           newCandidates.push({ indexs: indexs.concat([j]), score });
         }
