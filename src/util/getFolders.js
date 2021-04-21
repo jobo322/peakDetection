@@ -30,13 +30,31 @@ module.exports = function getFolders(pathFolder, options = {}) {
 };
 
 function extractEreticFactor(xml) {
-  let ereticFactor = 0;
+  let result = {};
   let reader = createStream({ stream: true });
   reader.on('tag:Eretic_Factor', (data) => {
     if (data.parent.name === 'Application_Parameter') {
-      ereticFactor = data.children[0].value;
+      result['ereticFactor'] = Number(data.children[0].value);
+    }
+  });
+  reader.on('tag:Experiment_Description', (data) => {
+    if (data.parent.name === 'Application_Parameter') {
+      result['experimentDescription'] = toJSON(data, {});
     }
   });
   reader.parse(xml);
-  return Number(ereticFactor);
+  return result;
+}
+
+function toJSON(tag, result) {
+  if (!tag.name && tag.children.length === 0) return tag.value;
+  for (let child of tag.children) {
+    let { children, value, name } = child;
+    if (name.length > 0) {
+      result[name] = toJSON(child, {});
+      continue;
+    }
+    if (name.length === 0 && children.length === 0) return value;
+  }
+  return result;
 }

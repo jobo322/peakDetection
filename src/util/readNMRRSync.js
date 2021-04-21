@@ -1,6 +1,5 @@
 'use strict';
 
-const { readFileSync } = require('fs');
 const { resolve } = require('path');
 
 const { convertFolder } = require('brukerconverter');

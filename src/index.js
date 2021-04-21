@@ -1,12 +1,13 @@
 'use strict';
 
+const { writeFileSync } = require('fs');
+const { join } = require('path');
+
 const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
 const { SpectrumGenerator } = require('spectrum-generator');
 
 const readNMRRSync = require('./util/readNMRRSync');
-const { writeFileSync } = require('fs');
-const { join } = require('path');
 
 const path =
   'C:\\Users\\alejo\\Downloads\\Telegram Desktop\\dataset489_469.zip';
