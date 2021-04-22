@@ -6,7 +6,6 @@ const { create: createStream } = require('xml-reader');
 
 module.exports = function getFolders(pathFolder, options = {}) {
   let { separator } = options;
-
   let folders = [];
   let quantFactorSample = {};
   let directories = walker(pathFolder, { nofile: true });
@@ -34,16 +33,18 @@ function extractEreticFactor(xml) {
   let reader = createStream({ stream: true });
   reader.on('tag:Eretic_Factor', (data) => {
     if (data.parent.name === 'Application_Parameter') {
-      result['ereticFactor'] = Number(data.children[0].value);
+      result.ereticFactor = Number(data.children[0].value);
     }
   });
   reader.on('tag:Experiment_Description', (data) => {
     if (data.parent.name === 'Application_Parameter') {
-      result['experimentDescription'] = toJSON(data, {});
+      result.experimentDescription = toJSON(data, {});
     }
   });
   reader.parse(xml);
-  return result;
+  
+  let { experimentDescription, ereticFactor } = result;
+  return { ereticFactor, ...experimentDescription };
 }
 
 function toJSON(tag, result) {

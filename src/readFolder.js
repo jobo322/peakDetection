@@ -1,4 +1,5 @@
 'use strinct';
+
 const { writeFileSync } = require('fs');
 const os = require('os');
 
@@ -14,7 +15,7 @@ const sqrtPI = Math.sqrt(Math.PI);
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
 let path = '/data2/BIOGUNE';
-// let path = 'C:\\users\\alejo\\documents\\BIOGUNE';
+// let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
 
 let ROI = [
   {
@@ -70,7 +71,7 @@ let result = [];
 for (let folder of folders) {
   console.log(`\n\n ${folder}`);
   let spectra = convertSpectra(folder, { separator, xy: true });
-  let ereticFactor = quantFactorSample[spectra.filename];
+  let experimentDescription = quantFactorSample[spectra.filename];
   let {
     data: spectrum,
     deltaX,
@@ -85,7 +86,7 @@ for (let folder of folders) {
 
   //normalize with ereticFactor
   for (let i = 0; i < nbPoints; i++) {
-    spectrum.y[i] /= ereticFactor;
+    spectrum.y[i] /= experimentDescription.ereticFactor;
   }
 
   let roiResult = {};
@@ -97,7 +98,6 @@ for (let folder of folders) {
       optimizationOptions,
       roi: roi.range,
     });
-
     let bestCandidate, candidates;
     if (roi.byCandidate) {
       // console.log(peaks)
@@ -128,6 +128,7 @@ for (let folder of folders) {
   }
   result.push({
     name: spectra.filename,
+    experimentDescription,
     rois: roiResult,
   });
 }
