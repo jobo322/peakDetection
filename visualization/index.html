@@ -1,0 +1,133 @@
+<!-- showing graph using jsGraph -->
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <script language="javascript" src="./jsgraph.min.js"></script>
+</head>
+
+<body>
+  <!-- <body bgcolor="#808080">  -->
+  <div id='mainBody'></div>
+  <!-- <table id="target" border="1" style="border-collapse: collapse;">
+  </table> -->
+
+  <script>
+    const options = {
+      width: 450,
+      height: 200,
+      plugins: {
+        zoom: {
+          zoomMode: 'xy',
+        },
+      },
+      mouseActions: [
+        {
+          plugin: 'zoom',
+          shift: false,
+          ctrl: false,
+        },
+        {
+          plugin: 'zoom',
+          type: 'mousewheel',
+          options: {
+            direction: 'y',
+          },
+        },
+        {
+          plugin: 'zoom',
+          type: 'dblclick',
+          options: {
+            mode: 'total',
+          },
+        },
+      ],
+    };
+    createGraph();
+
+    async function createGraph() {
+      let response = await fetch('./data.json');
+      let result = await response.json();
+      let index = 0;
+
+      for (let spectrum of result) {
+        var newcontent = document.createElement('div');
+        newcontent.setAttribute('id', 'name' + index);
+        newcontent.innerHTML = String(spectrum.name);
+        document.getElementById('mainBody').appendChild(newcontent);
+
+        let table = document.createElement('table');
+        table.setAttribute('id', 'target' + index);
+        document.getElementById('mainBody').appendChild(table);
+
+        let trRoi = document.createElement('TR');
+        let roiIndex = 0;
+        for (const roi in spectrum.rois) {
+          let tdRoi = document.createElement('TD');
+          tdRoi.setAttribute('id', `roi-${index}-${roiIndex++}`);
+          trRoi.appendChild(tdRoi);
+        }
+
+        document.getElementById('target' + index).appendChild(trRoi);
+
+        roiIndex = 0;
+        for (const roiName in spectrum.rois) {
+          let data = spectrum.rois[roiName];
+          addGraph(`roi-${index}-${roiIndex++}`, data, options);
+        }
+        index++;
+        continue;
+      }
+    }
+
+    function addGraph(id, data, options = {}) {
+      const { width = 250, height = 250 } = options;
+      const { xyExperimental, xyFit, xyPeaks, peaks } = data;
+      console.log(xyExperimental, xyFit, xyPeaks, peaks)
+      // let's draw the experimental data.
+      console.log(`id ${id}`)
+      let graph = new Graph(id, options);
+      graph.resize(width, height); // Resizes the container
+      //graph.secondaryGridOff(false);
+
+      let waveForm = Graph.newWaveform();
+      waveForm.setData(xyExperimental.y, xyExperimental.x);
+      graph
+        .newSerie('line serie', {}, 'line') // Creates a new serie
+        .autoAxis() // Assigns axes
+        .setWaveform(waveForm)
+        .setLineColor('blue')
+        .getYAxis()
+        .setScientific(true);
+      //.secondaryGridOff(false);//.setColor('red');
+      let waveForm2 = Graph.newWaveform();
+      waveForm2.setData(xyFit.y, xyFit.x);
+      graph
+        .newSerie('line serie2', {}, 'line') // Creates a new serie
+        .autoAxis() // Assigns axes
+        .setWaveform(waveForm2)
+        .setLineColor('red')
+        .getYAxis()
+        .setScientific(true);
+      //.secondaryGridOff(false);//.setColor('red');
+
+      let peakIndex = 0
+      for (let xyPeak of xyPeaks) {
+        console.log(`xyPeak`, xyPeak)
+        let waveform = Graph.newWaveform();
+        waveform.setData(xyPeak.y, xyPeak.x);
+        graph
+          .newSerie(`line peak ${peakIndex++}`, {}, 'line')
+          .autoAxis()
+          .setWaveform(waveform)
+          .setLineColor('green')
+          .getYAxis()
+          .setScientific(true);
+      }
+      graph.getXAxis().flip(true);
+      graph.draw(); // Draw
+    }
+  </script>
+</body>
+
+</html>
