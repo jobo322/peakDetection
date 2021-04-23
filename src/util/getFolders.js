@@ -8,8 +8,10 @@ module.exports = function getFolders(pathFolder, options = {}) {
   let { separator } = options;
   let folders = [];
   let quantFactorSample = {};
+  let first = false;
   let directories = walker(pathFolder, { nofile: true });
   for (let i = 0; i < directories.length; i++) {
+    if (first) continue;
     let dir = directories[i].path;
     if (!existsSync(join(dir, '1r'))) continue;
     let parts = dir.split(separator);
@@ -24,6 +26,7 @@ module.exports = function getFolders(pathFolder, options = {}) {
       readFileSync(quantFactorPath, 'utf8'),
     );
     folders.push(dir);
+    // first = true;
   }
   return { folders, quantFactorSample };
 };

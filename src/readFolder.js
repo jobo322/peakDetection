@@ -4,18 +4,20 @@ const { writeFileSync } = require('fs');
 const os = require('os');
 
 const { gsd, optimizePeaks } = require('ml-gsd');
+const { xyAutoPeaksPicking } = require('nmr-processing');
 const { xyExtract } = require('ml-spectra-processing');
 const { unparse } = require('papaparse');
 
 const convertSpectra = require('./util/convertSpectra');
 const getFolders = require('./util/getFolders');
+const { SpectrumGenerator, generateSpectrum } = require('spectrum-generator');
 
 const sqrtPI = Math.sqrt(Math.PI);
 
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
-let path = '/data2/BIOGUNE';
-// let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
+// let path = '/data2/BIOGUNE';
+let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
 
 let ROI = [
   {
@@ -27,7 +29,7 @@ let ROI = [
   },
   {
     name: 'eretic',
-    range: { from: 14.5, to: 15.5 },
+    range: { from: 14.9, to: 15.1 },
     delta: 15,
     pattern: [1],
     byCandidate: false,
@@ -35,7 +37,7 @@ let ROI = [
   {
     name: 'glucose',
     delta: 5.23,
-    range: { from: 5.15, to: 5.35 },
+    range: { from: 5.15, to: 5.4 },
     pattern: [1, 1.008460237],
     integral: [1],
     jCoupling: [3.74],
@@ -46,12 +48,15 @@ let ROI = [
 let gsdOptions = {
   minMaxRatio: 0.01,
   broadRatio: 0.00025,
+  broadWith: 2,
+  shape: { kind: 'pseudovoigt' },
   smoothY: true,
   realTopDetection: true,
+  sgOptions: { windowSize: 47, polynomial: 3 },
 };
 
 let optimizationOptions = {
-  factorWidth: 1,
+  factorWidth: 8,
   factorLimits: 2,
   shape: {
     kind: 'pseudoVoigt',
@@ -59,8 +64,16 @@ let optimizationOptions = {
   optimization: {
     kind: 'lm',
     options: {
-      maxInterations: 500,
+      maxInterations: 1000,
       gradientDifference: 1e-3,
+    },
+    parameters: {
+      x: {
+        init: (peak) => peak.x,
+        max: (peak) => peak.x + peak.width * 0.2,
+        min: (peak) => peak.x - peak.width * 0.2,
+        gradientDifference: (peak) => peak.width * 2e-3,
+      },
     },
   },
 };
@@ -93,21 +106,48 @@ for (let folder of folders) {
   let first;
   for (let roi of ROI) {
     console.log(`roi: ${roi.name}`);
-    let peaks = getOptPeaks(spectrum, {
+    let { peaks, xyExperimental } = getOptPeaks(spectrum, {
       gsdOptions,
       optimizationOptions,
       roi: roi.range,
     });
-    let bestCandidate, candidates;
+
+    //draw the match line
+    let peakList = peaks.map((peak) => {
+      let { x, y, width, mu } = peak;
+      return { x, y, width, options: { options: { mu } } };
+    });
+    let { x: xFit, y: yFit } = generateSpectrum(peakList, {
+      ...roi.range,
+      nbPoints: 512,
+      shape: { kind: 'pseudovoigt' },
+    });
+
+    let bestCandidate = [];
+    let candidates;
     if (roi.byCandidate) {
       // console.log(peaks)
       candidates = lookingForCandidates(peaks, roi, { field });
-      candidates.sort((a, b) => b.score - a.score);
-      bestCandidate = candidates[0].peaks;
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => b.score - a.score);
+        bestCandidate = candidates[0].peaks;
+      }
     } else {
       candidates = { peaks: peaks.slice(), score: 1 };
       peaks.sort((a, b) => b.y - a.y);
       bestCandidate = peaks.slice(0, roi.pattern.length);
+    }
+
+    let xyPeaks = [];
+    for (let peak of bestCandidate) {
+      let { y, x, width, mu } = peak;
+      const { x: xPeak, y: yPeak } = generateSpectrum([{ x, y, width, options: { options: { mu } }}], {
+        from: x - 4 * width,
+        to: x + 4 * width,
+        nbPoints: 64,
+        shape: { kind: 'pseudovoigt' },
+      })
+      xyPeaks.push({ x: Array.from(xPeak), y: Array.from(yPeak) });
     }
 
     let shift =
@@ -121,6 +161,9 @@ for (let folder of folders) {
 
     roiResult[roi.name] = {
       shift,
+      xyExperimental,
+      xyFit: { x: Array.from(xFit), y: Array.from(yFit) },
+      xyPeaks,
       integration,
       candidates,
       peaks: bestCandidate,
@@ -133,19 +176,22 @@ for (let folder of folders) {
   });
 }
 
-writeFileSync('peakResult.json', JSON.stringify(result));
-writeFileSync('peakResult.csv', unparse(result));
+writeFileSync('visualization/data.json', JSON.stringify(result));
+// writeFileSync('peakResult.csv', unparse(result));
 
 function getOptPeaks(spectrum, options = {}) {
   let { roi, optimizationOptions, gsdOptions } = options;
   let { from, to } = roi;
-  let experimental = xyExtract(spectrum, { zones: [{ from, to }] });
-  let peaks = gsd(experimental, gsdOptions);
-  let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
-  return optPeaks.map((peak) => {
+  let xyExperimental = xyExtract(spectrum, { zones: [{ from, to }] });
+  let peaksList = gsd(xyExperimental, gsdOptions);
+  let peakList = xyAutoPeaksPicking(xyExperimental, gsdOptions);
+  let optPeaks = optimizePeaks(xyExperimental, peaksList, optimizationOptions);
+  let peaks = optPeaks.map((peak) => {
     let { x, y, width, mu } = peak;
     return { x, y, width, mu };
   });
+
+  return { peaks, xyExperimental };
 }
 function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
   if (candidates.length === 0) return null;
@@ -180,11 +226,12 @@ function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
       if (diff < 0.1) {
         let RIP = pattern[iPattern] / pattern[iPattern + 1];
         let RIC = peaks[index].y / peaks[j].y;
-
+        let RWC = peaks[index].width / peaks[j].width;
         let diffRI = Math.abs(RIP - RIC) / RIP;
+        let diffRW = Math.abs(1 - RWC);
 
-        if (diffRI < 0.08) {
-          score += 1 - diffRI;
+        if (diffRI < 0.1) {
+          score += 1 - diffRI - diffRW;
           newCandidates.push({ indexs: indexs.concat([j]), score });
         }
       } else {
