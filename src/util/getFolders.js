@@ -45,7 +45,7 @@ function extractEreticFactor(xml) {
     }
   });
   reader.parse(xml);
-  
+
   let { experimentDescription, ereticFactor } = result;
   return { ereticFactor, ...experimentDescription };
 }

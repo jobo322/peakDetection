@@ -4,20 +4,20 @@ const { writeFileSync } = require('fs');
 const os = require('os');
 
 const { gsd, optimizePeaks } = require('ml-gsd');
-const { xyAutoPeaksPicking } = require('nmr-processing');
 const { xyExtract } = require('ml-spectra-processing');
+const { xyAutoPeaksPicking } = require('nmr-processing');
 const { unparse } = require('papaparse');
+const { SpectrumGenerator, generateSpectrum } = require('spectrum-generator');
 
 const convertSpectra = require('./util/convertSpectra');
 const getFolders = require('./util/getFolders');
-const { SpectrumGenerator, generateSpectrum } = require('spectrum-generator');
 
 const sqrtPI = Math.sqrt(Math.PI);
 
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
-// let path = '/data2/BIOGUNE';
-let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
+let path = '/data2/BIOGUNE';
+// let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
 
 let ROI = [
   {
@@ -141,12 +141,15 @@ for (let folder of folders) {
     let xyPeaks = [];
     for (let peak of bestCandidate) {
       let { y, x, width, mu } = peak;
-      const { x: xPeak, y: yPeak } = generateSpectrum([{ x, y, width, options: { options: { mu } }}], {
-        from: x - 4 * width,
-        to: x + 4 * width,
-        nbPoints: 64,
-        shape: { kind: 'pseudovoigt' },
-      })
+      const { x: xPeak, y: yPeak } = generateSpectrum(
+        [{ x, y, width, options: { options: { mu } } }],
+        {
+          from: x - 4 * width,
+          to: x + 4 * width,
+          nbPoints: 64,
+          shape: { kind: 'pseudovoigt' },
+        },
+      );
       xyPeaks.push({ x: Array.from(xPeak), y: Array.from(yPeak) });
     }
 
