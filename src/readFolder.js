@@ -11,6 +11,7 @@ const { SpectrumGenerator, generateSpectrum } = require('spectrum-generator');
 
 const convertSpectra = require('./util/convertSpectra');
 const getFolders = require('./util/getFolders');
+const assignDeep = require('./util/assignDeep');
 
 const sqrtPI = Math.sqrt(Math.PI);
 
@@ -42,20 +43,31 @@ let ROI = [
     integral: [1],
     jCoupling: [3.74],
     byCandidate: true,
+    gsdOptions: {
+      sgOptions: { windowSize: 47, polynomial: 3 },
+    },
+    optimizationOptions: {
+      optimization: {
+        options: { maxIterations: 1000 },
+        // parameters: {
+
+        // }
+      }
+    }
   },
 ];
 
-let gsdOptions = {
+let defaultGsdOptions = {
   minMaxRatio: 0.01,
   broadRatio: 0.00025,
   broadWith: 2,
   shape: { kind: 'pseudovoigt' },
   smoothY: true,
   realTopDetection: true,
-  sgOptions: { windowSize: 47, polynomial: 3 },
+  sgOptions: { windowSize: 27, polynomial: 3 },
 };
 
-let optimizationOptions = {
+let defaultOptimizationOptions = {
   factorWidth: 8,
   factorLimits: 2,
   shape: {
@@ -64,15 +76,15 @@ let optimizationOptions = {
   optimization: {
     kind: 'lm',
     options: {
-      maxInterations: 1000,
-      gradientDifference: 1e-3,
+      maxIterations: 300,
     },
     parameters: {
       x: {
-        init: (peak) => peak.x,
-        max: (peak) => peak.x + peak.width * 0.2,
-        min: (peak) => peak.x - peak.width * 0.2,
-        gradientDifference: (peak) => peak.width * 2e-3,
+        max: (peak) => peak.x + peak.width * 0.1,
+        min: (peak) => peak.x - peak.width * 0.1,
+      },
+      y: {
+        max: () => 1.05,
       },
     },
   },
@@ -106,6 +118,8 @@ for (let folder of folders) {
   let first;
   for (let roi of ROI) {
     console.log(`roi: ${roi.name}`);
+    let gsdOptions = assignDeep({}, defaultGsdOptions, roi.gsdOptions);
+    let optimizationOptions = assignDeep({}, defaultOptimizationOptions, roi.optimizationOptions);
     let { peaks, xyExperimental } = getOptPeaks(spectrum, {
       gsdOptions,
       optimizationOptions,
@@ -115,10 +129,14 @@ for (let folder of folders) {
     //draw the match line
     let peakList = peaks.map((peak) => {
       let { x, y, width, mu } = peak;
-      return { x, y, width, options: { options: { mu } } };
+      return { x, y, width, shape: { options: { mu } } };
     });
+    peakList.sort((a, b) => a.x - b.x);
+    let fPeak = peakList[0];
+    let tPeak = peakList[peakList.length - 1];
     let { x: xFit, y: yFit } = generateSpectrum(peakList, {
-      ...roi.range,
+      from: fPeak.x - fPeak.width * 4,
+      to: tPeak.x + tPeak.width * 4,
       nbPoints: 512,
       shape: { kind: 'pseudovoigt' },
     });
@@ -142,7 +160,7 @@ for (let folder of folders) {
     for (let peak of bestCandidate) {
       let { y, x, width, mu } = peak;
       const { x: xPeak, y: yPeak } = generateSpectrum(
-        [{ x, y, width, options: { options: { mu } } }],
+        [{ x, y, width, shape: { options: { mu } } }],
         {
           from: x - 4 * width,
           to: x + 4 * width,
