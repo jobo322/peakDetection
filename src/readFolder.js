@@ -3,7 +3,7 @@
 const { writeFileSync } = require('fs');
 const os = require('os');
 
-const { gsd, optimizePeaks } = require('ml-gsd');
+// const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
 const { xyAutoPeaksPicking } = require('nmr-processing');
 const { unparse } = require('papaparse');
@@ -17,8 +17,10 @@ const sqrtPI = Math.sqrt(Math.PI);
 
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
-let path = '/data2/BIOGUNE';
+// let path = '/data2/BIOGUNE';
+let path = '/data2/ANPC';
 // let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
+// let path = 'C:\\users\\alejo\\documents\\ANPC';
 
 let ROI = [
   {
@@ -44,24 +46,26 @@ let ROI = [
     jCoupling: [3.74],
     byCandidate: true,
     gsdOptions: {
-      sgOptions: { windowSize: 47, polynomial: 3 },
+      sgOptions: { windowSize: 27, polynomial: 3 },
     },
     optimizationOptions: {
       optimization: {
         options: { maxIterations: 1000 },
-        // parameters: {
-
-        // }
-      }
-    }
+        parameters: {
+          width: {
+            max: (peak) => peak.width * 4,
+            min: (peak) => peak.width * 0.25,
+          },
+        },
+      },
+    },
   },
 ];
 
 let defaultGsdOptions = {
   minMaxRatio: 0.01,
   broadRatio: 0.00025,
-  broadWith: 2,
-  shape: { kind: 'pseudovoigt' },
+  broadWith: 1,
   smoothY: true,
   realTopDetection: true,
   sgOptions: { windowSize: 27, polynomial: 3 },
@@ -119,7 +123,14 @@ for (let folder of folders) {
   for (let roi of ROI) {
     console.log(`roi: ${roi.name}`);
     let gsdOptions = assignDeep({}, defaultGsdOptions, roi.gsdOptions);
-    let optimizationOptions = assignDeep({}, defaultOptimizationOptions, roi.optimizationOptions);
+    let optimizationOptions = assignDeep(
+      {},
+      defaultOptimizationOptions,
+      roi.optimizationOptions,
+    );
+
+    gsdOptions.shape = optimizationOptions.shape;
+
     let { peaks, xyExperimental } = getOptPeaks(spectrum, {
       gsdOptions,
       optimizationOptions,
@@ -138,7 +149,7 @@ for (let folder of folders) {
       from: fPeak.x - fPeak.width * 4,
       to: tPeak.x + tPeak.width * 4,
       nbPoints: 512,
-      shape: { kind: 'pseudovoigt' },
+      shape: gsdOptions.shape,
     });
 
     let bestCandidate = [];
@@ -165,7 +176,7 @@ for (let folder of folders) {
           from: x - 4 * width,
           to: x + 4 * width,
           nbPoints: 64,
-          shape: { kind: 'pseudovoigt' },
+          shape: gsdOptions.shape,
         },
       );
       xyPeaks.push({ x: Array.from(xPeak), y: Array.from(yPeak) });
@@ -204,8 +215,8 @@ function getOptPeaks(spectrum, options = {}) {
   let { roi, optimizationOptions, gsdOptions } = options;
   let { from, to } = roi;
   let xyExperimental = xyExtract(spectrum, { zones: [{ from, to }] });
-  let peaksList = gsd(xyExperimental, gsdOptions);
-  let peakList = xyAutoPeaksPicking(xyExperimental, gsdOptions);
+  // let peaksList = gsd(xyExperimental, gsdOptions);
+  let peaksList = xyAutoPeaksPicking(xyExperimental, gsdOptions);
   let optPeaks = optimizePeaks(xyExperimental, peaksList, optimizationOptions);
   let peaks = optPeaks.map((peak) => {
     let { x, y, width, mu } = peak;
