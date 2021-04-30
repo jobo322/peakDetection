@@ -3,7 +3,7 @@
 const { writeFileSync } = require('fs');
 const os = require('os');
 
-// const { gsd, optimizePeaks } = require('ml-gsd');
+const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
 const { xyAutoPeaksPicking } = require('nmr-processing');
 const { unparse } = require('papaparse');
@@ -18,9 +18,9 @@ const sqrtPI = Math.sqrt(Math.PI);
 let separator = os.type() === 'Windows_NT' ? '\\' : '/';
 
 // let path = '/data2/BIOGUNE';
-let path = '/data2/ANPC';
+// let path = '/data2/ANPC';
 // let path = 'C:\\users\\alejo\\documents\\BIOGUNEtest';
-// let path = 'C:\\users\\alejo\\documents\\ANPC';
+let path = 'C:\\users\\alejo\\documents\\ANPC';
 
 let ROI = [
   {
@@ -46,12 +46,17 @@ let ROI = [
     jCoupling: [3.74],
     byCandidate: true,
     gsdOptions: {
-      sgOptions: { windowSize: 27, polynomial: 3 },
+      broadWith: 0.25,
+      sgOptions: { windowSize: 21, polynomial: 3 },
     },
     optimizationOptions: {
       optimization: {
         options: { maxIterations: 1000 },
         parameters: {
+          x: {
+            max: (peak) => peak.x + peak.width * 1,
+            min: (peak) => peak.x - peak.width * 1,
+          },
           width: {
             max: (peak) => peak.width * 4,
             min: (peak) => peak.width * 0.25,
@@ -65,10 +70,11 @@ let ROI = [
 let defaultGsdOptions = {
   minMaxRatio: 0.01,
   broadRatio: 0.00025,
+  optimize: true,
   broadWith: 1,
   smoothY: true,
   realTopDetection: true,
-  sgOptions: { windowSize: 27, polynomial: 3 },
+  sgOptions: { windowSize: 37, polynomial: 3 },
 };
 
 let defaultOptimizationOptions = {
@@ -84,8 +90,8 @@ let defaultOptimizationOptions = {
     },
     parameters: {
       x: {
-        max: (peak) => peak.x + peak.width * 0.1,
-        min: (peak) => peak.x - peak.width * 0.1,
+        max: (peak) => peak.x + peak.width * 2,
+        min: (peak) => peak.x - peak.width * 2,
       },
       y: {
         max: () => 1.05,
@@ -215,8 +221,11 @@ function getOptPeaks(spectrum, options = {}) {
   let { roi, optimizationOptions, gsdOptions } = options;
   let { from, to } = roi;
   let xyExperimental = xyExtract(spectrum, { zones: [{ from, to }] });
-  // let peaksList = gsd(xyExperimental, gsdOptions);
-  let peaksList = xyAutoPeaksPicking(xyExperimental, gsdOptions);
+  // let optPeaks = xyAutoPeaksPicking(xyExperimental, {
+  //   ...gsdOptions,
+  //   ...optimizationOptions,
+  // });
+  let peaksList = gsd(xyExperimental, gsdOptions);
   let optPeaks = optimizePeaks(xyExperimental, peaksList, optimizationOptions);
   let peaks = optPeaks.map((peak) => {
     let { x, y, width, mu } = peak;
