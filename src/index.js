@@ -6,6 +6,7 @@ const { join } = require('path');
 const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
 const { SpectrumGenerator } = require('spectrum-generator');
+const { solventSuppression } = require('nmr-processing');
 
 const readNMRRSync = require('./util/readNMRRSync');
 
@@ -50,10 +51,20 @@ for (let i = 0; i < pdata.length; i++) {
     spectrum.x = spectrum.x.reverse();
     spectrum.y = spectrum.y.reverse();
   }
+
+  const xyData = align({
+    xyData: spectrum,
+    referencePeaks: [
+      { x: 5.226, y: 1 },
+      { x: 5.22, y: 1 },
+    ],
+    delta: 5.22,
+    fromTo: { from: 5.0, to: 5.4 },
+  });
   let peakOptimized = { filename, fit: [] };
   for (let roi of ROI) {
     let { from, to } = roi;
-    let experimental = xyExtract(spectrum, { zones: [{ from, to }] });
+    let experimental = xyExtract(xyData, { zones: [{ from, to }] });
     let peaks = gsd(experimental, gsdOptions);
     let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
     let spectrumGenerator = new SpectrumGenerator({ ...roi, nbPoints: 256 });
@@ -74,3 +85,27 @@ for (let i = 0; i < pdata.length; i++) {
 }
 
 writeFileSync(join(pathToWrite, 'fittingResult.json'), JSON.stringify(result));
+
+function align(input) {
+  const { xyData, referencePeaks, delta, fromTo } = input;
+
+  const ROI = xyExtract(xyData, { zones: [fromTo] });
+  const peaks = gsd(ROI, gsdOptions);
+
+  const marketPeaks = solventSuppression(
+    peaks,
+    {
+      delta,
+      peaks: referencePeaks,
+    },
+    { marketPeaks: true },
+  );
+
+  const glucosePeaks = marketPeaks.filter((peak) => peak.kind === 'solvent');
+  const shift =
+    delta - glucosePeaks.reduce((a, b) => a + b.x, 0) / glucosePeaks.length;
+
+  xyData.x.forEach((e, i, arr) => (arr[i] += shift));
+
+  return xyData;
+}
