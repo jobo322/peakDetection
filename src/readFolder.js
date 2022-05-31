@@ -1,17 +1,15 @@
-'use strinct';
+'use strict';
 
 const { writeFileSync } = require('fs');
 const os = require('os');
 
 const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
-const { xyAutoPeaksPicking } = require('nmr-processing');
-const { unparse } = require('papaparse');
-const { SpectrumGenerator, generateSpectrum } = require('spectrum-generator');
+const { generateSpectrum } = require('spectrum-generator');
 
+const assignDeep = require('./util/assignDeep');
 const convertSpectra = require('./util/convertSpectra');
 const getFolders = require('./util/getFolders');
-const assignDeep = require('./util/assignDeep');
 
 const sqrtPI = Math.sqrt(Math.PI);
 
@@ -125,7 +123,6 @@ for (let folder of folders) {
   }
 
   let roiResult = {};
-  let first;
   for (let roi of ROI) {
     console.log(`roi: ${roi.name}`);
     let gsdOptions = assignDeep({}, defaultGsdOptions, roi.gsdOptions);
@@ -240,7 +237,6 @@ function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
     pattern.length === 0 ||
     candidates.some((e) => e.indexs.length === pattern.length)
   ) {
-    let { delta, range, nH } = options;
     return candidates.map((cand) => {
       let indexs = cand.indexs;
       let toExport = {
@@ -275,7 +271,6 @@ function getCandidates(peaks, jcp, pattern, candidates, options = {}) {
           score += 1 - diffRI - diffRW;
           newCandidates.push({ indexs: indexs.concat([j]), score });
         }
-      } else {
       }
     }
   }

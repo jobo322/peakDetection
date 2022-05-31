@@ -1,3 +1,5 @@
+'use strict';
+
 const isValidKey = (key) => {
   return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
 };
@@ -25,4 +27,4 @@ module.exports = function assignDeep(target, ...args) {
     }
   }
   return target;
-}
+};

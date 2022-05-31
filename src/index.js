@@ -3,15 +3,14 @@
 const { writeFileSync } = require('fs');
 const { join } = require('path');
 
+const { convertFileList } = require('brukerconverter');
+const { fileListFromPath } = require('filelist-from');
 const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
+const { solventSuppression, xyAutoPeaksPicking } = require('nmr-processing');
 const { SpectrumGenerator } = require('spectrum-generator');
-const { solventSuppression } = require('nmr-processing');
 
-const readNMRRSync = require('./util/readNMRRSync');
-
-const path =
-  'C:\\Users\\alejo\\Downloads\\Telegram Desktop\\dataset489_469.zip';
+const path = 'C:\\Users\\alejo\\Documents\\BIOGUNE\\20S00399_test';
 const pathToWrite = './';
 
 let ROI = [
@@ -41,71 +40,103 @@ let optimizationOptions = {
   },
 };
 
-const pdata = readNMRRSync(path, { xy: true });
+let alignmentOptions = {
+  // reference peaks is the pattern to use only relative intensity import
+  referencePeaks: [
+    { x: 5.226, y: 1 },
+    { x: 5.22, y: 1 },
+  ],
+  // the expected delta of reference signal,
+  delta: 5.22,
+  // the region to make the PP and search the reference signal
+  fromTo: { from: 5.1, to: 5.4 },
+};
 
-let result = [];
-for (let i = 0; i < pdata.length; i++) {
-  let filename = pdata[i].filename;
-  let spectrum = pdata[i].value.spectra[0].data;
-  if (spectrum.x[0] > spectrum.x[1]) {
-    spectrum.x = spectrum.x.reverse();
-    spectrum.y = spectrum.y.reverse();
-  }
-
-  const xyData = align({
-    xyData: spectrum,
-    referencePeaks: [
-      { x: 5.226, y: 1 },
-      { x: 5.22, y: 1 },
-    ],
-    delta: 5.22,
-    fromTo: { from: 5.0, to: 5.4 },
+async function main() {
+  const fileList = fileListFromPath(path);
+  const pdata = await convertFileList(fileList, {
+    converter: { xy: true },
+    filter: {
+      ignore2D: true,
+      ignoreFID: true,
+    },
   });
-  let peakOptimized = { filename, fit: [] };
-  for (let roi of ROI) {
-    let { from, to } = roi;
-    let experimental = xyExtract(xyData, { zones: [{ from, to }] });
-    let peaks = gsd(experimental, gsdOptions);
-    let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
-    let spectrumGenerator = new SpectrumGenerator({ ...roi, nbPoints: 256 });
 
-    for (let peak of optPeaks) {
-      spectrumGenerator.addPeak({ ...peak });
+  let result = [];
+  for (let i = 0; i < pdata.length; i++) {
+    let filename = pdata[i].filename;
+    let spectrum = pdata[i].spectra[0].data;
+    if (spectrum.x[0] > spectrum.x[1]) {
+      spectrum.x = spectrum.x.reverse();
+      spectrum.re = spectrum.re.reverse();
     }
 
-    peakOptimized.fit.push({
-      roi,
-      peaks,
-      optimizedPeaks: optPeaks,
-      experimental,
-      fitted: spectrumGenerator.getSpectrum(),
+    const xyData = align({
+      spectrum,
+      ...alignmentOptions,
     });
+
+    let peakOptimized = { filename, fit: [] };
+    for (let roi of ROI) {
+      let experimental = xyExtract(xyData, { zones: [{ ...roi }] });
+
+      let peaks = gsd(experimental, gsdOptions);
+      let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
+      let spectrumGenerator = new SpectrumGenerator({ ...roi, nbPoints: 256 });
+
+      for (let peak of optPeaks) {
+        spectrumGenerator.addPeak({ ...peak });
+      }
+
+      peakOptimized.fit.push({
+        roi,
+        peaks,
+        optimizedPeaks: optPeaks,
+        experimental,
+        fitted: spectrumGenerator.getSpectrum(),
+      });
+    }
+    result.push(peakOptimized);
   }
-  result.push(peakOptimized);
+  writeFileSync(
+    join(pathToWrite, 'fittingResult.json'),
+    JSON.stringify(result),
+  );
 }
 
-writeFileSync(join(pathToWrite, 'fittingResult.json'), JSON.stringify(result));
+main();
 
 function align(input) {
-  const { xyData, referencePeaks, delta, fromTo } = input;
+  const { spectrum, referencePeaks, delta, fromTo } = input;
 
-  const ROI = xyExtract(xyData, { zones: [fromTo] });
-  const peaks = gsd(ROI, gsdOptions);
+  const xyData = { x: spectrum.x, y: spectrum.re };
+  const peaks = xyAutoPeaksPicking(xyData, {
+    ...fromTo,
+    optimize: true,
+    shape: { kind: 'lorentzian' },
+    groupingFactor: 2.5,
+  });
 
   const marketPeaks = solventSuppression(
     peaks,
-    {
-      delta,
-      peaks: referencePeaks,
-    },
-    { marketPeaks: true },
+    [
+      {
+        delta,
+        peaks: referencePeaks,
+      },
+    ],
+    { markSolventPeaks: true },
   );
 
-  const glucosePeaks = marketPeaks.filter((peak) => peak.kind === 'solvent');
-  const shift =
-    delta - glucosePeaks.reduce((a, b) => a + b.x, 0) / glucosePeaks.length;
-
-  xyData.x.forEach((e, i, arr) => (arr[i] += shift));
+  if (peaks.length > 0) {
+    const glucosePeaks = marketPeaks.filter((peak) => peak.kind === 'solvent');
+    if (glucosePeaks.length < 1) {
+      throw new Error('glucose peaks had not been found');
+    }
+    const shift =
+      delta - glucosePeaks.reduce((a, b) => a + b.x, 0) / glucosePeaks.length;
+    xyData.x.forEach((e, i, arr) => (arr[i] += shift));
+  }
 
   return xyData;
 }
