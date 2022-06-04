@@ -7,7 +7,12 @@ const { convertFileList } = require('brukerconverter');
 const { fileListFromPath } = require('filelist-from');
 const { gsd, optimizePeaks } = require('ml-gsd');
 const { xyExtract } = require('ml-spectra-processing');
-const { solventSuppression, xyAutoPeaksPicking } = require('nmr-processing');
+const {
+  solventSuppression,
+  xyAutoPeaksPicking,
+  xyzAutoZonesPicking,
+  xyzJResAnalyzer,
+} = require('nmr-processing');
 const { SpectrumGenerator } = require('spectrum-generator');
 
 const path = 'C:\\Users\\alejo\\Documents\\BIOGUNE\\20S00399_test';
@@ -18,11 +23,28 @@ let ROI = [
   { from: 3.0, to: 3.2 },
 ];
 
+let process2DOptions = {
+  zonesPicking: {
+    tolerances: [5, 100],
+  },
+  jResAnalyzer: { getZones: true },
+};
+
 let gsdOptions = {
   minMaxRatio: 0.01,
   broadRatio: 0.00025,
   smoothY: true,
   realTopDetection: true,
+};
+
+let converterOptions = {
+  converter: { xy: true },
+  filter: {
+    experimentNumber: [11, 12],
+    processingNumber: [1],
+    ignoreFID: true,
+    ignore2D: false,
+  },
 };
 
 let optimizationOptions = {
@@ -54,49 +76,15 @@ let alignmentOptions = {
 
 async function main() {
   const fileList = fileListFromPath(path);
-  const pdata = await convertFileList(fileList, {
-    converter: { xy: true },
-    filter: {
-      ignore2D: true,
-      ignoreFID: true,
-    },
-  });
-
+  const pdata = await convertFileList(fileList, converterOptions);
   let result = [];
-  for (let i = 0; i < pdata.length; i++) {
-    let filename = pdata[i].filename;
-    let spectrum = pdata[i].spectra[0].data;
-    if (spectrum.x[0] > spectrum.x[1]) {
-      spectrum.x = spectrum.x.reverse();
-      spectrum.re = spectrum.re.reverse();
+
+  for (const data of pdata) {
+    if (data.twoD) {
+      result.push(process2D(data, process2DOptions));
+    } else {
+      result.push(process1D(data));
     }
-
-    const xyData = align({
-      spectrum,
-      ...alignmentOptions,
-    });
-
-    let peakOptimized = { filename, fit: [] };
-    for (let roi of ROI) {
-      let experimental = xyExtract(xyData, { zones: [{ ...roi }] });
-
-      let peaks = gsd(experimental, gsdOptions);
-      let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
-      let spectrumGenerator = new SpectrumGenerator({ ...roi, nbPoints: 256 });
-
-      for (let peak of optPeaks) {
-        spectrumGenerator.addPeak({ ...peak });
-      }
-
-      peakOptimized.fit.push({
-        roi,
-        peaks,
-        optimizedPeaks: optPeaks,
-        experimental,
-        fitted: spectrumGenerator.getSpectrum(),
-      });
-    }
-    result.push(peakOptimized);
   }
   writeFileSync(
     join(pathToWrite, 'fittingResult.json'),
@@ -139,4 +127,66 @@ function align(input) {
   }
 
   return xyData;
+}
+
+function process1D(data) {
+  let spectrum = data.spectra[0].data;
+  if (spectrum.x[0] > spectrum.x[1]) {
+    spectrum.x = spectrum.x.reverse();
+    spectrum.re = spectrum.re.reverse();
+  }
+
+  const xyData = align({
+    spectrum,
+    ...alignmentOptions,
+  });
+
+  let peakOptimized = {
+    name: data.source.name,
+    expno: data.source.expno,
+    fit: [],
+  };
+  for (let roi of ROI) {
+    let experimental = xyExtract(xyData, { zones: [{ ...roi }] });
+
+    let peaks = gsd(experimental, gsdOptions);
+    let optPeaks = optimizePeaks(experimental, peaks, optimizationOptions);
+    let spectrumGenerator = new SpectrumGenerator({ ...roi, nbPoints: 256 });
+
+    for (let peak of optPeaks) {
+      spectrumGenerator.addPeak({ ...peak });
+    }
+
+    peakOptimized.fit.push({
+      roi,
+      peaks,
+      optimizedPeaks: optPeaks,
+      experimental,
+      fitted: spectrumGenerator.getSpectrum(),
+    });
+  }
+}
+
+function process2D(data, options) {
+  const { zonesPicking, jRestAnalyzer } = options;
+
+  const frequency = data.meta.observeFrequency;
+  const minMax = data.minMax;
+  const zones = xyzAutoZonesPicking(minMax, {
+    observedFrequencies: [frequency, frequency],
+    ...zonesPicking,
+  });
+
+  const newZones = [];
+  for (let zone of zones) {
+    newZones.push(xyzJResAnalyzer(zone.signals, jRestAnalyzer));
+  }
+
+  return {
+    isTwoD: true,
+    name: data.source.name,
+    expno: data.source.expno,
+    zones: newZones,
+    experimental: minMax,
+  };
 }
