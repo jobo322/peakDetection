@@ -15,7 +15,7 @@ const {
 } = require('nmr-processing');
 const { SpectrumGenerator } = require('spectrum-generator');
 
-const path = 'C:\\Users\\alejo\\Documents\\BIOGUNE\\20S00399_test';
+const path = 'C:\\Users\\alejo\\Documents\\BIOGUNE\\20S01360';
 const pathToWrite = './';
 
 const csvData = readFileSync('./src/annotationDB.csv', 'utf-8');
@@ -82,19 +82,27 @@ let alignmentOptions = {
 async function main() {
   const fileList = fileListFromPath(path);
   const pdata = await convertFileList(fileList, converterOptions);
-  let result = [];
 
-  for (const data of pdata) {
-    if (data.twoD) {
-      result.push(process2D(data, process2DOptions));
-    } else {
-      result.push(process1D(data));
-    }
+  const groups = {};
+  for (let data of pdata) {
+    if (!groups[data.name]) groups[data.name] = [];
+    groups[data.name].push(data);
   }
-  writeFileSync(
-    join(pathToWrite, 'fittingResult.json'),
-    JSON.stringify(result),
-  );
+
+  for (const group in groups) {
+    let result = [];
+    for (const data of groups[group]) {
+      if (data.twoD) {
+        result.push(process2D(data, process2DOptions));
+      } else {
+        result.push(process1D(data));
+      }
+    }
+    writeFileSync(
+      join(pathToWrite, `result_${result[0].name}.json`),
+      JSON.stringify(result),
+    );
+  }
 }
 
 main();
